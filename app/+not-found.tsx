@@ -1,39 +1,48 @@
-// template
-import { Link, Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Stack, router } from "expo-router";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/lib/useTheme";
+import Colors from "@/constants/colors";
 
 export default function NotFoundScreen() {
-  return (
-    <>
-      <Stack.Screen options={{ title: "Oops!" }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>This screen doesn&apos;t exist.</Text>
+  const { theme } = useTheme();
 
-        <Link href="/" style={styles.link}>
-          <Text style={styles.linkText}>Go to home screen!</Text>
-        </Link>
-      </View>
-    </>
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <Ionicons name="alert-circle-outline" size={48} color={theme.textTertiary} />
+      <Text style={[styles.title, { color: theme.text }]}>Page Not Found</Text>
+      <Pressable
+        style={[styles.btn, { backgroundColor: Colors.primary }]}
+        onPress={() => router.replace("/")}
+      >
+        <Text style={styles.btnText}>Go Home</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
     padding: 20,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
   },
-  link: {
-    marginTop: 15,
-    paddingVertical: 15,
+  btn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 4,
+    marginTop: 8,
   },
-  linkText: {
+  btnText: {
+    color: "#fff",
     fontSize: 14,
-    color: "#2e78b7",
+    fontFamily: "Inter_500Medium",
   },
 });
