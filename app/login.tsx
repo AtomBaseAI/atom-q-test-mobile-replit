@@ -61,7 +61,7 @@ export default function LoginScreen() {
       showToast("Login successful!", "success");
       router.replace("/home");
     } catch (err: any) {
-      showToast(err.message || "Login failed", "error");
+      showToast(err?.message || "Login failed", "error");
     } finally {
       setLoading(false);
     }

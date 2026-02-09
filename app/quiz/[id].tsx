@@ -83,6 +83,9 @@ function OptionButton({
         },
       ]}
       onPress={onPress}
+      testID={`option-${option.id}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
     >
       <View
         style={[

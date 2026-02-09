@@ -1,4 +1,3 @@
-import { fetch } from "expo/fetch";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -59,7 +58,15 @@ async function apiRequest<T>(
     headers,
   });
 
-  const json = await res.json();
+  let json: any;
+  try {
+    json = await res.json();
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Request failed with status ${res.status}`);
+    }
+    throw new Error("Invalid response from server");
+  }
   if (!res.ok) {
     throw new Error(json.message || `Request failed with status ${res.status}`);
   }

@@ -8,14 +8,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  withSequence,
-  withDelay,
-  runOnJS,
-} from "react-native-reanimated";
 import { useTheme } from "@/lib/useTheme";
 import Colors from "@/constants/colors";
 
@@ -35,27 +27,13 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
   const { theme } = useTheme();
-  const translateY = useSharedValue(-100);
-  const opacity = useSharedValue(0);
 
   React.useEffect(() => {
-    translateY.value = withTiming(0, { duration: 300 });
-    opacity.value = withTiming(1, { duration: 300 });
-
     const timer = setTimeout(() => {
-      opacity.value = withTiming(0, { duration: 250 });
-      translateY.value = withTiming(-100, { duration: 250 }, () => {
-        runOnJS(onDismiss)(toast.id);
-      });
-    }, 3000);
-
+      onDismiss(toast.id);
+    }, 3500);
     return () => clearTimeout(timer);
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    opacity: opacity.value,
-  }));
+  }, [toast.id]);
 
   const iconMap: Record<ToastType, { name: keyof typeof Ionicons.glyphMap; color: string }> = {
     success: { name: "checkmark-circle", color: theme.success },
@@ -67,7 +45,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
   const icon = iconMap[toast.type];
 
   return (
-    <Animated.View
+    <View
       style={[
         styles.toast,
         {
@@ -75,8 +53,8 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
           borderColor: theme.cardBorder,
           borderLeftColor: icon.color,
         },
-        animStyle,
       ]}
+      accessibilityRole="alert"
     >
       <Ionicons name={icon.name} size={20} color={icon.color} />
       <Text style={[styles.toastText, { color: theme.text }]} numberOfLines={2}>
@@ -85,7 +63,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
       <Pressable onPress={() => onDismiss(toast.id)} hitSlop={8}>
         <Ionicons name="close" size={16} color={theme.textSecondary} />
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
