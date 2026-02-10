@@ -14,7 +14,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, FadeInRight } from "react-native-reanimated";
 import { useTheme } from "@/lib/useTheme";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
@@ -153,7 +152,7 @@ function QuestionView({
       : theme.error;
 
   return (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.questionContainer}>
+    <View style={styles.questionContainer}>
       <View style={styles.questionHeader}>
         <Text style={[styles.questionNum, { color: theme.textTertiary }]}>
           Question {questionNum} of {total}
@@ -219,7 +218,7 @@ function QuestionView({
           ))}
         </View>
       )}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -236,6 +235,22 @@ export default function QuizScreen() {
   const [timeLeft, setTimeLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const answersRef = useRef<Record<string, string>>({});
+  const quizDataRef = useRef<QuizData | null>(null);
+  const submittingRef = useRef(false);
+  const autoSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    quizDataRef.current = quizData;
+  }, [quizData]);
+
+  useEffect(() => {
+    submittingRef.current = submitting;
+  }, [submitting]);
 
   useEffect(() => {
     loadQuiz();
@@ -249,10 +264,23 @@ export default function QuizScreen() {
       const res = await api.getQuiz(id);
       if (res.success && res.data) {
         setQuizData(res.data);
-        setAnswers(res.data.answers || {});
-        if (res.data.timeRemaining > 0) {
+        const initialAnswers = res.data.answers || {};
+        setAnswers(initialAnswers);
+        answersRef.current = initialAnswers;
+        quizDataRef.current = res.data;
+        if (res.data.quiz.timeLimit && res.data.timeRemaining > 0) {
           setTimeLeft(res.data.timeRemaining);
-          startTimer(res.data.timeRemaining);
+          startTimer(res.data.timeRemaining, res.data.startedAt);
+        } else if (res.data.quiz.timeLimit && res.data.quiz.timeLimit > 0) {
+          const timeLimitSec = res.data.quiz.timeLimit * 60;
+          const elapsed = Math.floor(
+            (Date.now() - new Date(res.data.startedAt).getTime()) / 1000
+          );
+          const remaining = Math.max(0, timeLimitSec - elapsed);
+          setTimeLeft(remaining);
+          if (remaining > 0) {
+            startTimer(remaining, res.data.startedAt);
+          }
         }
       }
     } catch (err: any) {
@@ -263,20 +291,56 @@ export default function QuizScreen() {
     }
   }
 
-  function startTimer(initial: number) {
-    let remaining = initial;
+  function startTimer(initial: number, startedAt: string) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const startTime = Date.now();
     timerRef.current = setInterval(() => {
-      remaining -= 1;
+      const elapsedSinceStart = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, initial - elapsedSinceStart);
       setTimeLeft(remaining);
       if (remaining <= 0) {
         if (timerRef.current) clearInterval(timerRef.current);
-        handleSubmit(true);
+        timerRef.current = null;
+        if (!autoSubmittedRef.current) {
+          autoSubmittedRef.current = true;
+          doSubmitFromTimer();
+        }
       }
     }, 1000);
   }
 
   function setAnswer(questionId: string, value: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  }
+
+  async function doSubmitFromTimer() {
+    const qd = quizDataRef.current;
+    const ans = answersRef.current;
+    if (!qd) return;
+    if (submittingRef.current) return;
+    setSubmitting(true);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    try {
+      const res = await api.submitQuiz(qd.quiz.id, qd.attemptId, ans);
+      if (res.success && res.data) {
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast("Time's up! Quiz submitted.", "info");
+        router.replace({
+          pathname: "/result",
+          params: {
+            score: res.data.score.toString(),
+            totalPoints: res.data.totalPoints.toString(),
+            timeTaken: res.data.timeTaken.toString(),
+            quizTitle: res.data.quiz.title,
+            showAnswers: qd.quiz.showAnswers ? "1" : "0",
+          },
+        });
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to submit quiz", "error");
+      setSubmitting(false);
+    }
   }
 
   async function handleSubmit(auto = false) {
