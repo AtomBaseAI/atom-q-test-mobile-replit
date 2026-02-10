@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "AtomQ",
-    "slug": "atomq-quiz",
+    "slug": "atomq",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -30,18 +30,18 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
       "expo-font",
       "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "75405e41-6f5a-4ed8-87ab-9f8ab03a95ab"
+      }
+    },
+    "owner": "atombaseais-organization"
   }
 }
