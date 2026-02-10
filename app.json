@@ -31,7 +31,8 @@
     },
     "plugins": [
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true,
