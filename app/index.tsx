@@ -10,7 +10,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { useAuth } from "@/lib/auth-context";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import Colors from "@/constants/colors";
 
 export default function SplashIndex() {

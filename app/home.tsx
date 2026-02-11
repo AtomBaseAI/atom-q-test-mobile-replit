@@ -19,7 +19,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import Colors from "@/constants/colors";
@@ -195,7 +195,7 @@ function getStatusInfo(quiz: Quiz, theme: any) {
 }
 
 export default function HomeScreen() {
-  const { theme, isDark } = useTheme();
+  const { theme, isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
 
@@ -237,10 +237,28 @@ export default function HomeScreen() {
           },
         ]}
       >
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={[styles.greeting, { color: theme.textSecondary }]}>Welcome back</Text>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Your Quizzes</Text>
         </View>
+        <Pressable
+          style={({ pressed }) => [
+            styles.themeToggle,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+          onPress={toggleTheme}
+          hitSlop={8}
+        >
+          <Ionicons
+            name={isDark ? "sunny" : "moon"}
+            size={18}
+            color={theme.text}
+          />
+        </Pressable>
       </View>
 
       {isLoading ? (
@@ -302,9 +320,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerBar: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
+    gap: 12,
+  },
+  themeToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   greeting: {
     fontSize: 13,

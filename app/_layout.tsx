@@ -15,6 +15,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider } from "@/lib/auth-context";
 import { ToastProvider } from "@/lib/toast-context";
+import { ThemeProvider } from "@/lib/theme-context";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,11 +53,13 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <AuthProvider>
-              <ToastProvider>
-                <RootLayoutNav />
-              </ToastProvider>
-            </AuthProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <ToastProvider>
+                  <RootLayoutNav />
+                </ToastProvider>
+              </AuthProvider>
+            </ThemeProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

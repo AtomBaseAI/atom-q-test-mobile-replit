@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useAuth } from "@/lib/auth-context";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import Colors from "@/constants/colors";

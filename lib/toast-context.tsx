@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import Colors from "@/constants/colors";
 
 type ToastType = "success" | "error" | "info" | "warning";

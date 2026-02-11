@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import Colors from "@/constants/colors";

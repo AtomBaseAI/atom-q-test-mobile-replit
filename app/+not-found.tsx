@@ -1,7 +1,7 @@
 import { Stack, router } from "expo-router";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import Colors from "@/constants/colors";
 
 export default function NotFoundScreen() {

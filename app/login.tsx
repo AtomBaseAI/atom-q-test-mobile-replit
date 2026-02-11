@@ -21,7 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useAuth } from "@/lib/auth-context";
-import { useTheme } from "@/lib/useTheme";
+import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import Colors from "@/constants/colors";
 
