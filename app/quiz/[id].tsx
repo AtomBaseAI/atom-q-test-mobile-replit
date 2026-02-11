@@ -34,6 +34,7 @@ interface Question {
   difficulty: string;
   order: number;
   points: number;
+  correctAnswer?: string | string[];
 }
 
 interface QuizData {
@@ -60,24 +61,78 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function getQuestionId(q: Question): string {
+  return q.id ?? (q as any)._id;
+}
+
+function prepareAnswersForSubmit(
+  questions: Question[],
+  answers: Record<string, string>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const q of questions) {
+    const qId = getQuestionId(q);
+    const val = answers[qId] ?? answers[q.id] ?? "";
+    if (!val) continue;
+    if (q.type === "FILL_IN_BLANK") {
+      result[qId] = String(val).trim();
+    } else if (q.type === "MULTI_SELECT") {
+      // Web uses pipe-separated format: "Option1|Option2|Option3"
+      try {
+        const parsed = JSON.parse(val);
+        const arr = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : val.split("|").map((s: string) => s.trim()).filter(Boolean);
+        result[qId] = arr.join("|");
+      } catch {
+        result[qId] = val; // already pipe-separated
+      }
+    } else {
+      // Single choice / True-False: send option text as-is
+      result[qId] = String(val);
+    }
+  }
+  return result;
+}
+
 function OptionButton({
   option,
   selected,
   onPress,
   theme,
+  wrong,
+  correct,
 }: {
   option: Option;
   selected: boolean;
   onPress: () => void;
   theme: any;
+  wrong?: boolean;
+  correct?: boolean;
 }) {
+  const bgColor = correct
+    ? theme.success + "18"
+    : wrong
+    ? theme.error + "18"
+    : selected
+    ? Colors.primary + "12"
+    : theme.inputBg;
+  const borderColor = correct
+    ? theme.success
+    : wrong
+    ? theme.error
+    : selected
+    ? Colors.primary
+    : theme.inputBorder;
+  const indicatorColor = correct ? theme.success : wrong ? theme.error : selected ? Colors.primary : "transparent";
+  const indicatorBorder = correct ? theme.success : wrong ? theme.error : selected ? Colors.primary : theme.textTertiary;
+  const textColor = correct ? theme.success : wrong ? theme.error : theme.text;
+
   return (
     <Pressable
       style={({ pressed }) => [
         styles.optionBtn,
         {
-          backgroundColor: selected ? Colors.primary + "12" : theme.inputBg,
-          borderColor: selected ? Colors.primary : theme.inputBorder,
+          backgroundColor: bgColor,
+          borderColor,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
@@ -90,14 +145,14 @@ function OptionButton({
         style={[
           styles.optionIndicator,
           {
-            backgroundColor: selected ? Colors.primary : "transparent",
-            borderColor: selected ? Colors.primary : theme.textTertiary,
+            backgroundColor: indicatorColor,
+            borderColor: indicatorBorder,
           },
         ]}
       >
-        {selected && <Ionicons name="checkmark" size={12} color="#fff" />}
+        {(selected || correct) && <Ionicons name="checkmark" size={12} color="#fff" />}
       </View>
-      <Text style={[styles.optionText, { color: theme.text }]}>{option.text}</Text>
+      <Text style={[styles.optionText, { color: textColor }]}>{option.text || option.id}</Text>
     </Pressable>
   );
 }
@@ -109,6 +164,9 @@ function QuestionView({
   questionNum,
   total,
   theme,
+  checkAnswerEnabled,
+  isChecked,
+  isCorrectResult,
 }: {
   question: Question;
   answer: string;
@@ -116,31 +174,36 @@ function QuestionView({
   questionNum: number;
   total: number;
   theme: any;
+  checkAnswerEnabled?: boolean;
+  isChecked?: boolean;
+  isCorrectResult?: boolean;
 }) {
+  const showAnswerBlock = !!(checkAnswerEnabled && isChecked);
   const selectedMulti: string[] = (() => {
     if (!answer) return [];
     try {
       const parsed = JSON.parse(answer);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.map(String) : [];
     } catch {
-      return [];
+      return answer.includes("|") ? answer.split("|").map((s) => s.trim()).filter(Boolean) : [];
     }
   })();
 
-  function toggleMultiSelect(optId: string) {
-    const current = [...selectedMulti];
-    const idx = current.indexOf(optId);
+  function toggleMultiSelect(optText: string) {
+    const text = String(optText);
+    const current = [...selectedMulti].map(String);
+    const idx = current.indexOf(text);
     if (idx >= 0) {
       current.splice(idx, 1);
     } else {
-      current.push(optId);
+      current.push(text);
     }
-    onAnswer(JSON.stringify(current));
+    onAnswer(JSON.stringify(current)); // Store array of option texts; submit converts to pipe-separated
     if (Platform.OS !== "web") Haptics.selectionAsync();
   }
 
-  function selectSingle(optId: string) {
-    onAnswer(optId);
+  function selectSingle(optText: string) {
+    onAnswer(String(optText)); // Store option text (matches web/backend)
     if (Platform.OS !== "web") Haptics.selectionAsync();
   }
 
@@ -150,6 +213,52 @@ function QuestionView({
       : question.difficulty === "MEDIUM"
       ? Colors.primary
       : theme.error;
+
+  // Normalize options - use raw API identifiers; for plain strings use the string as id (backend expects it)
+  const options: Option[] = (question.options || []).map((opt: any, index: number) => {
+    let id: string;
+    let text: string;
+    if (typeof opt === "string" || typeof opt === "number") {
+      const s = String(opt);
+      id = s; // Backend likely expects the actual value for string options
+      text = s;
+    } else {
+      id = String(opt?.id ?? opt?._id ?? opt?.optionId ?? opt?.option_id ?? opt?.value ?? String.fromCharCode(65 + index));
+      text = String(opt?.text ?? opt?.optionText ?? opt?.option_text ?? opt?.label ?? opt?.content ?? opt?.body ?? opt?.title ?? opt?.name ?? opt?.value ?? "");
+    }
+    return { id, text };
+  }).filter((opt) => opt.text !== "" || opt.id !== "");
+
+  const correctAnswer = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
+  const hasCorrectAnswer = correctAnswer != null && (Array.isArray(correctAnswer) ? correctAnswer.length > 0 : String(correctAnswer).length > 0);
+
+  // Web uses: single/TF = option text; multi-select = pipe-separated "Opt1|Opt2|Opt3"
+  const correctTexts: string[] =
+    question.type === "MULTI_SELECT"
+      ? typeof correctAnswer === "string"
+        ? correctAnswer.split("|").map((s) => s.trim()).filter(Boolean)
+        : Array.isArray(correctAnswer)
+        ? (correctAnswer as string[]).map(String)
+        : []
+      : correctAnswer != null
+      ? [String(correctAnswer).trim()]
+      : [];
+
+  const userSelectedTexts: string[] =
+    question.type === "MULTI_SELECT"
+      ? selectedMulti
+      : answer ? [String(answer).trim()] : [];
+
+  const questionTypeLabel =
+    question.type === "MULTIPLE_CHOICE"
+      ? "Multiple Choice"
+      : question.type === "MULTI_SELECT"
+      ? "Multi Select"
+      : question.type === "TRUE_FALSE"
+      ? "True / False"
+      : question.type === "FILL_IN_BLANK"
+      ? "Fill in the Blank"
+      : question.type;
 
   return (
     <View style={styles.questionContainer}>
@@ -169,6 +278,7 @@ function QuestionView({
         </View>
       </View>
 
+      <Text style={[styles.questionTypeLabel, { color: theme.textTertiary }]}>{questionTypeLabel}</Text>
       <Text style={[styles.questionContent, { color: theme.text }]}>{question.content}</Text>
 
       {question.type === "FILL_IN_BLANK" ? (
@@ -182,6 +292,7 @@ function QuestionView({
           ]}
         >
           <TextInput
+            editable={!showAnswerBlock}
             style={[styles.fillTextInput, { color: theme.text }]}
             placeholder="Type your answer..."
             placeholderTextColor={theme.textTertiary}
@@ -195,29 +306,82 @@ function QuestionView({
           <Text style={[styles.multiHint, { color: theme.textTertiary }]}>
             Select all that apply
           </Text>
-          {question.options.map((opt) => (
-            <OptionButton
-              key={opt.id}
-              option={opt}
-              selected={selectedMulti.includes(opt.id)}
-              onPress={() => toggleMultiSelect(opt.id)}
-              theme={theme}
-            />
-          ))}
+          {options.map((opt, idx) => {
+            const optText = opt.text || opt.id;
+            const isCorrect = showAnswerBlock && correctTexts.includes(optText);
+            const isWrong = showAnswerBlock && !isCorrectResult && userSelectedTexts.includes(optText);
+            return (
+              <OptionButton
+                key={opt.id || idx}
+                option={opt}
+                selected={selectedMulti.includes(optText)}
+                onPress={() => !showAnswerBlock && toggleMultiSelect(optText)}
+                theme={theme}
+                correct={isCorrect}
+                wrong={isWrong}
+              />
+            );
+          })}
         </View>
       ) : (
         <View style={styles.optionsList}>
-          {question.options.map((opt) => (
-            <OptionButton
-              key={opt.id}
-              option={opt}
-              selected={answer === opt.id}
-              onPress={() => selectSingle(opt.id)}
-              theme={theme}
-            />
-          ))}
+          {options.map((opt, idx) => {
+            const optText = opt.text || opt.id;
+            const isCorrect = showAnswerBlock && correctTexts.includes(optText);
+            const isWrong = showAnswerBlock && !isCorrectResult && userSelectedTexts.includes(optText);
+            return (
+              <OptionButton
+                key={opt.id || idx}
+                option={opt}
+                selected={String(answer).trim() === optText}
+                onPress={() => !showAnswerBlock && selectSingle(optText)}
+                theme={theme}
+                correct={isCorrect}
+                wrong={isWrong}
+              />
+            );
+          })}
         </View>
       )}
+
+      {showAnswerBlock && hasCorrectAnswer && (
+        <View style={[styles.optionBtn, { backgroundColor: theme.success + "18", borderColor: theme.success, marginTop: 12 }]}>
+          <View
+            style={[
+              styles.optionIndicator,
+              {
+                backgroundColor: theme.success,
+                borderColor: theme.success,
+              },
+            ]}
+          >
+            <Ionicons name="checkmark" size={12} color="#fff" />
+          </View>
+          <Text style={[styles.optionText, { color: theme.success }]}>
+            {question.type === "MULTI_SELECT"
+              ? correctTexts.join(", ")
+              : question.type === "FILL_IN_BLANK"
+              ? String(correctAnswer)
+              : correctTexts[0] ?? String(correctAnswer)}
+          </Text>
+        </View>
+      )}
+
+      {showAnswerBlock && question.explanation ? (
+        <View
+          style={[
+            styles.answerBlock,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              marginTop: 12,
+            },
+          ]}
+        >
+          <Text style={[styles.answerLabel, { color: theme.textSecondary }]}>Explanation</Text>
+          <Text style={[styles.answerText, { color: theme.text }]}>{question.explanation}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -232,6 +396,7 @@ export default function QuizScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [checkedQuestions, setCheckedQuestions] = useState<Set<string>>(new Set());
   const [timeLeft, setTimeLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -313,6 +478,48 @@ export default function QuizScreen() {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   }
 
+  function isAnswerCorrect(question: Question, answer: string): boolean {
+    const correct = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
+    if (correct == null) return false;
+    if (question.type === "MULTI_SELECT") {
+      // Web: correctAnswer is pipe-separated "Opt1|Opt2"; user answer is JSON array or pipe-separated
+      const correctArr = typeof correct === "string"
+        ? correct.split("|").map((s) => s.trim()).filter(Boolean).sort()
+        : Array.isArray(correct)
+        ? correct.map(String).sort()
+        : [];
+      const userArr = (() => {
+        try {
+          const p = JSON.parse(answer || "[]");
+          return Array.isArray(p) ? p.map(String).sort() : answer.split("|").map((s) => s.trim()).filter(Boolean).sort();
+        } catch {
+          return answer.split("|").map((s) => s.trim()).filter(Boolean).sort();
+        }
+      })();
+      return correctArr.length === userArr.length && correctArr.every((c, i) => c === userArr[i]);
+    }
+    if (question.type === "FILL_IN_BLANK") {
+      return String(answer || "").trim().toLowerCase() === String(correct).trim().toLowerCase();
+    }
+    // Single choice / True-False: compare option text
+    return String(answer || "").trim() === String(correct).trim();
+  }
+
+  function handleCheckAnswer() {
+    if (!quizData) return;
+    const q = quizData.quiz.questions[currentIndex];
+    const ans = answers[getQuestionId(q)] ?? answers[q.id] ?? "";
+    const correct = isAnswerCorrect(q, ans);
+    if (Platform.OS !== "web") {
+      if (correct) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    }
+    setCheckedQuestions((prev) => new Set(prev).add(getQuestionId(q)));
+  }
+
   async function doSubmitFromTimer() {
     const qd = quizDataRef.current;
     const ans = answersRef.current;
@@ -322,7 +529,8 @@ export default function QuizScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      const res = await api.submitQuiz(qd.quiz.id, qd.attemptId, ans);
+      const prepared = prepareAnswersForSubmit(qd.quiz.questions, ans);
+      const res = await api.submitQuiz(qd.quiz.id, qd.attemptId, prepared);
       if (res.success && res.data) {
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Time's up! Quiz submitted.", "info");
@@ -380,7 +588,8 @@ export default function QuizScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      const res = await api.submitQuiz(quizData.quiz.id, quizData.attemptId, answers);
+      const prepared = prepareAnswersForSubmit(quizData.quiz.questions, answers);
+      const res = await api.submitQuiz(quizData.quiz.id, quizData.attemptId, prepared);
       if (res.success && res.data) {
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Quiz submitted!", "success");
@@ -413,6 +622,19 @@ export default function QuizScreen() {
 
   const questions = quizData.quiz.questions;
   const current = questions[currentIndex];
+  const currentAnswer = answers[getQuestionId(current)] ?? answers[current.id] ?? "";
+  const hasAnswered =
+    current.type === "MULTI_SELECT"
+      ? (() => {
+          try {
+            const p = JSON.parse(currentAnswer);
+            return Array.isArray(p) && p.length > 0;
+          } catch {
+            return false;
+          }
+        })()
+      : currentAnswer.trim().length > 0;
+
   const answeredCount = Object.keys(answers).filter(
     (k) => answers[k] && answers[k].length > 0
   ).length;
@@ -485,11 +707,14 @@ export default function QuizScreen() {
       >
         <QuestionView
           question={current}
-          answer={answers[current.id] || ""}
-          onAnswer={(val) => setAnswer(current.id, val)}
+          answer={answers[getQuestionId(current)] ?? answers[current.id] ?? ""}
+          onAnswer={(val) => setAnswer(getQuestionId(current), val)}
           questionNum={currentIndex + 1}
           total={questions.length}
           theme={theme}
+          checkAnswerEnabled={quizData.quiz.checkAnswerEnabled}
+          isChecked={checkedQuestions.has(getQuestionId(current))}
+          isCorrectResult={checkedQuestions.has(getQuestionId(current)) && isAnswerCorrect(current, answers[getQuestionId(current)] ?? answers[current.id] ?? "")}
         />
       </ScrollView>
 
@@ -526,7 +751,24 @@ export default function QuizScreen() {
             {answeredCount}/{questions.length} answered
           </Text>
 
-          {currentIndex === questions.length - 1 ? (
+          {quizData.quiz.checkAnswerEnabled && !checkedQuestions.has(getQuestionId(current)) ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                styles.checkBtn,
+                {
+                  backgroundColor: Colors.primary,
+                  borderWidth: 0,
+                  opacity: hasAnswered ? (pressed ? 0.85 : 1) : 0.5,
+                },
+              ]}
+              onPress={hasAnswered ? handleCheckAnswer : undefined}
+              disabled={!hasAnswered}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#fff" />
+              <Text style={styles.checkBtnText}>Check</Text>
+            </Pressable>
+          ) : currentIndex === questions.length - 1 ? (
             <Pressable
               style={({ pressed }) => [
                 styles.navBtn,
@@ -574,11 +816,12 @@ export default function QuizScreen() {
           contentContainerStyle={styles.dotsRow}
         >
           {questions.map((q, i) => {
-            const isAnswered = !!answers[q.id] && answers[q.id].length > 0;
+            const qId = getQuestionId(q);
+            const isAnswered = !!(answers[qId] ?? answers[q.id]) && (answers[qId] ?? answers[q.id]).length > 0;
             const isCurrent = i === currentIndex;
             return (
               <Pressable
-                key={q.id}
+                key={qId}
                 style={[
                   styles.dot,
                   {
@@ -676,10 +919,35 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     textTransform: "uppercase",
   },
+  questionTypeLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
   questionContent: {
     fontSize: 16,
     fontFamily: "Inter_500Medium",
     lineHeight: 24,
+  },
+  answerBlock: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 4,
+    borderWidth: 1,
+    gap: 4,
+  },
+  answerLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  answerText: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
   },
   optionsList: { gap: 10 },
   multiHint: {
@@ -747,6 +1015,14 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     borderWidth: 0,
+  },
+  checkBtn: {
+    borderWidth: 0,
+  },
+  checkBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
   },
   submitBtnText: {
     fontSize: 14,
