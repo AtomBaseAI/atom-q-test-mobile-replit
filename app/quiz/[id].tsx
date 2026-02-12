@@ -812,19 +812,19 @@ export default function QuizScreen() {
   }, [id]);
 
   // Auto-save answers
-  useEffect(() => {
-    if (quizData && !submitting) {
-      if (autoSaveTimerRef.current) {
-        clearInterval(autoSaveTimerRef.current);
-      }
-      autoSaveTimerRef.current = setInterval(autoSaveAnswers, 30000);
-    }
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearInterval(autoSaveTimerRef.current);
-      }
-    };
-  }, [quizData, submitting]);
+  // useEffect(() => {
+  //   if (quizData && !submitting) {
+  //     if (autoSaveTimerRef.current) {
+  //       clearInterval(autoSaveTimerRef.current);
+  //     }
+  //     autoSaveTimerRef.current = setInterval(autoSaveAnswers, 30000);
+  //   }
+  //   return () => {
+  //     if (autoSaveTimerRef.current) {
+  //       clearInterval(autoSaveTimerRef.current);
+  //     }
+  //   };
+  // }, [quizData, submitting]);
 
   async function loadQuiz() {
     try {
