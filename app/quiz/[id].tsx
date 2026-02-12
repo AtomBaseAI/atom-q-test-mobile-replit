@@ -18,6 +18,7 @@ import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import Colors from "@/constants/colors";
+import HexagonLoader from "@/components/HexagonLoader";
 
 interface Option {
   id: string;
@@ -72,15 +73,12 @@ function normalizeOptions(options: any[]): Option[] {
     let text: string;
     
     if (typeof opt === "string") {
-      // If option is a plain string, use it as both id and text
       id = opt;
       text = opt;
     } else if (typeof opt === "number") {
-      // If option is a number (index), convert to letter (A, B, C...)
       id = String.fromCharCode(65 + index);
       text = String.fromCharCode(65 + index);
     } else if (typeof opt === "object" && opt !== null) {
-      // If option is an object, extract text from various possible field names
       text = String(
         opt?.text ?? 
         opt?.optionText ?? 
@@ -108,7 +106,6 @@ function getNormalizedCorrectAnswer(correctAnswer: any, options: Option[]): stri
   if (correctAnswer == null) return "";
   
   if (Array.isArray(correctAnswer)) {
-    // If correctAnswer is an array, normalize each element
     return correctAnswer.map((ca) => getNormalizedSingleAnswer(ca, options)).filter(String);
   }
   
@@ -120,7 +117,6 @@ function getNormalizedSingleAnswer(answer: any, options: Option[]): string {
   
   const answerStr = String(answer).trim();
   
-  // If answer is a number (index), get the text from options array
   if (!isNaN(Number(answerStr))) {
     const index = Number(answerStr);
     if (index >= 0 && index < options.length) {
@@ -128,7 +124,6 @@ function getNormalizedSingleAnswer(answer: any, options: Option[]): string {
     }
   }
   
-  // If answer matches an option id or text, return the text
   const matchedOption = options.find(
     (opt) => opt.id === answerStr || opt.text === answerStr
   );
@@ -136,7 +131,6 @@ function getNormalizedSingleAnswer(answer: any, options: Option[]): string {
     return matchedOption.text;
   }
   
-  // Return as-is if no match found (it's likely already normalized)
   return answerStr;
 }
 
@@ -157,10 +151,8 @@ function prepareAnswersForSubmit(
     const normalizedOpts = normalizeOptions(q.options);
     
     if (q.type === "FILL_IN_BLANK") {
-      // Always include fill-in-blank answers (can be empty)
       result[qId] = String(val || "").trim();
     } else if (q.type === "MULTI_SELECT") {
-      // For multi-select, always include even if empty
       let arr: string[] = [];
       if (val) {
         try {
@@ -171,37 +163,14 @@ function prepareAnswersForSubmit(
         }
       }
       
-      // Normalize each answer to use option text
       arr = arr.map((a) => getNormalizedSingleAnswer(a, normalizedOpts)).filter(Boolean);
-      result[qId] = arr.join("|");
-    } else if (q.type === "TRUE_FALSE") {
-      // Always include true/false answers
-      const normalized = getNormalizedSingleAnswer(val || "", normalizedOpts);
-      result[qId] = normalized || "";
+      result[qId] = JSON.stringify(arr);
     } else {
-      // Single choice: normalize to option text
       const normalized = getNormalizedSingleAnswer(val || "", normalizedOpts);
       result[qId] = normalized || "";
     }
   }
   
-  console.log("Prepared answers for submission:", result);
-  
-  // Debug: Log details about each answer
-  Object.entries(result).forEach(([qId, ans]) => {
-    const ansStr = typeof ans === 'string' ? ans : JSON.stringify(ans);
-    if (ansStr.length > 100) {
-      console.log(`  [${qId}] = "${ansStr.substring(0, 100)}..."`);
-    } else {
-      console.log(`  [${qId}] = "${ansStr}"`);
-    }
-  });
-  
-  // Detailed logging for debugging
-  console.log("[prepareAnswersForSubmit] Detailed breakdown:");
-  Object.entries(result).slice(0, 3).forEach(([qId, answer]) => {
-    console.log("[prepareAnswersForSubmit] Q:", qId, "→", JSON.stringify(answer).substring(0, 100));
-  });
   return result;
 }
 
@@ -292,7 +261,6 @@ function QuestionView({
 }) {
   const showAnswerBlock = !!(checkAnswerEnabled && isChecked);
   
-  // Normalize options from API
   const options = normalizeOptions(question.options);
   
   const selectedMulti: string[] = (() => {
@@ -333,7 +301,6 @@ function QuestionView({
   const rawCorrectAnswer = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
   const hasCorrectAnswer = rawCorrectAnswer != null && (Array.isArray(rawCorrectAnswer) ? rawCorrectAnswer.length > 0 : String(rawCorrectAnswer).length > 0);
 
-  // Normalize correctAnswer to use option text values
   const normalizedCorrect = getNormalizedCorrectAnswer(rawCorrectAnswer, options);
   const correctTexts: string[] = Array.isArray(normalizedCorrect) ? normalizedCorrect : normalizedCorrect ? [normalizedCorrect] : [];
 
@@ -362,7 +329,7 @@ function QuestionView({
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <View style={[styles.pointsBadge, { backgroundColor: Colors.primary + "15" }]}>
             <Text style={[styles.pointsText, { color: Colors.primary }]}>
-              {question.points} pt{question.points > 1 ? "s" : ""}
+              1 pt
             </Text>
           </View>
           <View style={[styles.pointsBadge, { backgroundColor: diffColor + "15" }]}>
@@ -579,11 +546,9 @@ export default function QuizScreen() {
     const normalizedCorrect = getNormalizedCorrectAnswer(rawCorrect, opts);
     
     if (question.type === "MULTI_SELECT") {
-      // Normalize both correct and user answers to option text arrays
       const correctArr = (Array.isArray(normalizedCorrect) ? normalizedCorrect : normalizedCorrect ? [normalizedCorrect] : [])
         .map(String).sort();
       
-      // Parse user answer as array or pipe-separated
       let userArr: string[] = [];
       try {
         const p = JSON.parse(answer || "[]");
@@ -592,7 +557,6 @@ export default function QuizScreen() {
         userArr = answer.split("|").map((s) => s.trim()).filter(Boolean);
       }
       
-      // Normalize user answer values to option text
       userArr = userArr.map((a) => getNormalizedSingleAnswer(a, opts)).filter(Boolean).sort();
       
       return correctArr.length === userArr.length && correctArr.every((c, i) => c === userArr[i]);
@@ -603,7 +567,6 @@ export default function QuizScreen() {
       return String(answer || "").trim().toLowerCase() === String(correct || "").trim().toLowerCase();
     }
     
-    // Single choice / True-False: normalize both sides and compare
     const correct = Array.isArray(normalizedCorrect) ? normalizedCorrect[0] : normalizedCorrect;
     const normalized = getNormalizedSingleAnswer(answer, opts);
     return String(normalized).trim() === String(correct || "").trim();
@@ -635,21 +598,19 @@ export default function QuizScreen() {
     try {
       const prepared = prepareAnswersForSubmit(qd.quiz.questions, ans);
       
-      console.log("Auto-submitting quiz (time expired):", {
-        quizId: qd.quiz.id,
-        attemptId: qd.attemptId,
-        answerCount: Object.keys(prepared).length,
-      });
-      
       const res = await api.submitQuiz(qd.quiz.id, qd.attemptId, prepared);
       if (res.success && res.data) {
+        const numQuestions = qd.quiz.questions.length;
+        const newTotalPoints = numQuestions;
+        const newScore = res.data.totalPoints > 0 ? (res.data.score / res.data.totalPoints) * newTotalPoints : 0;
+
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Time's up! Quiz submitted.", "info");
         router.replace({
           pathname: "/result",
           params: {
-            score: res.data.score.toString(),
-            totalPoints: res.data.totalPoints.toString(),
+            score: newScore.toString(),
+            totalPoints: newTotalPoints.toString(),
             timeTaken: res.data.timeTaken.toString(),
             quizTitle: res.data.quiz.title,
             showAnswers: qd.quiz.showAnswers ? "1" : "0",
@@ -659,7 +620,6 @@ export default function QuizScreen() {
         throw new Error(res.message || "Failed to auto-submit quiz");
       }
     } catch (err: any) {
-      console.error("Auto-submit error:", err);
       showToast(err.message || "Failed to submit quiz", "error");
       setSubmitting(false);
     }
@@ -705,60 +665,29 @@ export default function QuizScreen() {
     try {
       prepared = prepareAnswersForSubmit(quizData.quiz.questions, answers);
       
-      // Validate before submission
-      if (!prepared || Object.keys(prepared).length === 0) {
-        throw new Error("No answers to submit. Please answer at least one question.");
-      }
-      
-      // Ensure attemptId is valid
-      if (!quizData.attemptId || !quizData.quiz.id) {
-        throw new Error("Invalid quiz or attempt data. Please reload the quiz.");
-      }
-      
-      const answered = Object.values(prepared).filter(v => v && v.length > 0).length;
-      const empty = Object.keys(prepared).length - answered;
-      console.log("Submitting:", { total: Object.keys(prepared).length, answered, empty });
-      
-      const answeredIds = Object.entries(prepared).filter(([_, v]) => v && v.length > 0).map(([id]) => id);
-      const emptyIds = Object.entries(prepared).filter(([_, v]) => !v || v.length === 0).map(([id]) => id);
-      console.log("Questions with answers:", answeredIds);
-      console.log("Questions without answers:", emptyIds);
-      
       const res = await api.submitQuiz(quizData.quiz.id, quizData.attemptId, prepared);
       
       if (res.success && res.data) {
+        const numQuestions = quizData.quiz.questions.length;
+        const newTotalPoints = numQuestions;
+        const newScore = res.data.totalPoints > 0 ? (res.data.score / res.data.totalPoints) * newTotalPoints : 0;
+
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Quiz submitted!", "success");
         router.replace({
           pathname: "/result",
           params: {
-            score: res.data.score.toString(),
-            totalPoints: res.data.totalPoints.toString(),
+            score: newScore.toString(),
+            totalPoints: newTotalPoints.toString(),
             timeTaken: res.data.timeTaken.toString(),
             quizTitle: res.data.quiz.title,
             showAnswers: quizData.quiz.showAnswers ? "1" : "0",
           },
         });
       } else {
-        console.error("Response not successful:", res);
         throw new Error(res.message || "Unknown error during submission");
       }
     } catch (err: any) {
-      console.error("================");
-      console.error("❌ SUBMISSION FAILED");
-      console.error("================");
-      console.error("Error message:", err.message);
-      console.error("Full error:", err);
-      console.error("Error stack:", err.stack);
-      
-      // Show prepared payload breakdown
-      const answered = Object.entries(prepared).filter(([_, v]) => v && v.length > 0);
-      const unanswered = Object.entries(prepared).filter(([_, v]) => !v || v.length === 0);
-      console.error("Payload Summary:");
-      console.error("  Total questions:", quizData?.quiz.questions.length);
-      console.error("  With answers:", answered.length, "IDs:", answered.map(([id]) => id));
-      console.error("  Empty:", unanswered.length, "IDs:", unanswered.map(([id]) => id).slice(0, 3));
-      
       showToast(err.message || "Failed to submit quiz", "error");
       setSubmitting(false);
     }
@@ -767,7 +696,7 @@ export default function QuizScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <HexagonLoader />
       </View>
     );
   }

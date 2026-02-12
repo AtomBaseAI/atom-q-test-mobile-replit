@@ -23,6 +23,7 @@ import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import Colors from "@/constants/colors";
+import HexagonLoader from "@/components/HexagonLoader";
 
 interface Quiz {
   id: string;
@@ -262,9 +263,9 @@ export default function HomeScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+      <HexagonLoader />
+    </View>
       ) : sortedQuizzes.length === 0 ? (
         <View style={styles.centered}>
           <MaterialCommunityIcons name="clipboard-text-outline" size={48} color={theme.textTertiary} />
