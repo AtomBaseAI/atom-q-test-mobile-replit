@@ -21,30 +21,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/lib/toast-context";
-import { api } from "@/lib/api";
+import { api, QuizListItem, QuizAttemptStatus } from "@/lib/api";
 import Colors from "@/constants/colors";
 import HexagonLoader from "@/components/HexagonLoader";
 
-interface Quiz {
-  id: string;
-  title: string;
-  description: string;
-  timeLimit: number | null;
-  difficulty: string;
-  maxAttempts: number | null;
-  startTime: string;
-  endTime: string;
-  questionCount: number;
-  attempts: number;
-  bestScore: number | null;
-  lastAttemptDate: string | null;
-  canAttempt: boolean;
-  attemptStatus: string;
-  hasInProgress: boolean;
-  inProgressAttemptId: string | null;
-}
-
-function QuizCard({ quiz, index }: { quiz: Quiz; index: number }) {
+function QuizCard({ quiz, index }: { quiz: QuizListItem; index: number }) {
   const { theme, isDark } = useTheme();
 
   const difficultyColor =
@@ -143,12 +124,12 @@ function QuizCard({ quiz, index }: { quiz: Quiz; index: number }) {
             <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
           )}
         </View>
-      </Pressable>
+    </Pressable>
     </Animated.View>
   );
 }
 
-function getStatusInfo(quiz: Quiz, theme: any) {
+function getStatusInfo(quiz: QuizListItem, theme: any) {
   switch (quiz.attemptStatus) {
     case "not_started":
       return {
@@ -162,7 +143,7 @@ function getStatusInfo(quiz: Quiz, theme: any) {
         label: "Continue",
         icon: "arrow-forward-circle",
         color: "#3B82F6",
-        bg: "#3B82F615",
+        bg: "#3B82F6" + "15",
       };
     case "completed":
       return {
@@ -213,10 +194,10 @@ export default function HomeScreen() {
     },
   });
 
-  const quizzes = (quizData || []) as Quiz[];
+  const quizzes = (quizData || []) as QuizListItem[];
 
   const sortedQuizzes = [...quizzes].sort((a, b) => {
-    const order: Record<string, number> = {
+    const order: Record<QuizAttemptStatus, number> = {
       in_progress: 0,
       not_started: 1,
       completed: 2,
@@ -263,9 +244,9 @@ export default function HomeScreen() {
       </View>
 
       {isLoading ? (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
-      <HexagonLoader />
-    </View>
+        <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+          <HexagonLoader />
+        </View>
       ) : sortedQuizzes.length === 0 ? (
         <View style={styles.centered}>
           <MaterialCommunityIcons name="clipboard-text-outline" size={48} color={theme.textTertiary} />
