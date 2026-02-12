@@ -68,7 +68,15 @@ async function apiRequest<T>(
     throw new Error("Invalid response from server");
   }
   if (!res.ok) {
-    throw new Error(json.message || `Request failed with status ${res.status}`);
+    console.error("[API Error Response]", {
+      endpoint,
+      status: res.status,
+      statusText: res.statusText,
+      message: json.message,
+      error: json.error,
+      details: json.details || json.data,
+    });
+    throw new Error(json.message || json.error || `Request failed with status ${res.status}`);
   }
   return json;
 }
@@ -102,10 +110,35 @@ export const api = {
   },
 
   async submitQuiz(quizId: string, attemptId: string, answers: Record<string, string>) {
-    return apiRequest<any>(`/quiz/${quizId}/submit`, {
+    const answerIds = Object.keys(answers || {});
+    const sampleAnswers = Object.fromEntries(answerIds.slice(0, 3).map((id) => [id, answers[id]]));
+    
+    console.log("[submitQuiz] Endpoint: /quiz/" + quizId + "/submit");
+    console.log("[submitQuiz] Attempt ID:", attemptId);
+    console.log("[submitQuiz] Total answers:", answerIds.length);
+    console.log("[submitQuiz] Sample answers:", sampleAnswers);
+    console.log("[submitQuiz] First 5 question IDs:", answerIds.slice(0, 5));
+    console.log("Submitting quiz:", {
+      quizId,
+      attemptId,
+      answerCount: Object.keys(answers || {}).length,
+    });
+    
+    const result = await apiRequest<any>(`/quiz/${quizId}/submit`, {
       method: "POST",
       body: JSON.stringify({ attemptId, answers }),
     });
+    
+    // Validate response
+    if (!result.success) {
+      throw new Error(result.message || "Server returned success=false");
+    }
+    
+    if (!result.data) {
+      throw new Error("No result data from server");
+    }
+    
+    return result;
   },
 
   async getProfile() {

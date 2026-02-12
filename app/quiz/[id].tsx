@@ -22,6 +22,7 @@ import Colors from "@/constants/colors";
 interface Option {
   id: string;
   text: string;
+  index?: number; // Track original index for fallback comparison
 }
 
 interface Question {
@@ -29,12 +30,12 @@ interface Question {
   title: string;
   content: string;
   type: "MULTIPLE_CHOICE" | "MULTI_SELECT" | "TRUE_FALSE" | "FILL_IN_BLANK";
-  options: Option[];
+  options: string[] | Option[] | any[]; // Raw options from API
   explanation: string;
   difficulty: string;
   order: number;
   points: number;
-  correctAnswer?: string | string[];
+  correctAnswer?: string | string[] | number; // Can be index, text, or array
 }
 
 interface QuizData {
@@ -65,31 +66,142 @@ function getQuestionId(q: Question): string {
   return q.id ?? (q as any)._id;
 }
 
+function normalizeOptions(options: any[]): Option[] {
+  return (options || []).map((opt: any, index: number) => {
+    let id: string;
+    let text: string;
+    
+    if (typeof opt === "string") {
+      // If option is a plain string, use it as both id and text
+      id = opt;
+      text = opt;
+    } else if (typeof opt === "number") {
+      // If option is a number (index), convert to letter (A, B, C...)
+      id = String.fromCharCode(65 + index);
+      text = String.fromCharCode(65 + index);
+    } else if (typeof opt === "object" && opt !== null) {
+      // If option is an object, extract text from various possible field names
+      text = String(
+        opt?.text ?? 
+        opt?.optionText ?? 
+        opt?.option_text ?? 
+        opt?.label ?? 
+        opt?.content ?? 
+        opt?.body ?? 
+        opt?.title ?? 
+        opt?.name ?? 
+        opt?.value ?? 
+        opt?.option ?? 
+        ""
+      );
+      id = text || String.fromCharCode(65 + index);
+    } else {
+      id = String.fromCharCode(65 + index);
+      text = String.fromCharCode(65 + index);
+    }
+    
+    return { id, text, index };
+  }).filter((opt) => opt.text !== "");
+}
+
+function getNormalizedCorrectAnswer(correctAnswer: any, options: Option[]): string | string[] {
+  if (correctAnswer == null) return "";
+  
+  if (Array.isArray(correctAnswer)) {
+    // If correctAnswer is an array, normalize each element
+    return correctAnswer.map((ca) => getNormalizedSingleAnswer(ca, options)).filter(String);
+  }
+  
+  return getNormalizedSingleAnswer(correctAnswer, options);
+}
+
+function getNormalizedSingleAnswer(answer: any, options: Option[]): string {
+  if (answer == null) return "";
+  
+  const answerStr = String(answer).trim();
+  
+  // If answer is a number (index), get the text from options array
+  if (!isNaN(Number(answerStr))) {
+    const index = Number(answerStr);
+    if (index >= 0 && index < options.length) {
+      return options[index].text;
+    }
+  }
+  
+  // If answer matches an option id or text, return the text
+  const matchedOption = options.find(
+    (opt) => opt.id === answerStr || opt.text === answerStr
+  );
+  if (matchedOption) {
+    return matchedOption.text;
+  }
+  
+  // Return as-is if no match found (it's likely already normalized)
+  return answerStr;
+}
+
 function prepareAnswersForSubmit(
   questions: Question[],
   answers: Record<string, string>
 ): Record<string, string> {
   const result: Record<string, string> = {};
+  
   for (const q of questions) {
     const qId = getQuestionId(q);
+    if (!qId) {
+      console.warn("Question has no ID:", q);
+      continue;
+    }
+    
     const val = answers[qId] ?? answers[q.id] ?? "";
-    if (!val) continue;
+    const normalizedOpts = normalizeOptions(q.options);
+    
     if (q.type === "FILL_IN_BLANK") {
-      result[qId] = String(val).trim();
+      // Always include fill-in-blank answers (can be empty)
+      result[qId] = String(val || "").trim();
     } else if (q.type === "MULTI_SELECT") {
-      // Web uses pipe-separated format: "Option1|Option2|Option3"
-      try {
-        const parsed = JSON.parse(val);
-        const arr = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : val.split("|").map((s: string) => s.trim()).filter(Boolean);
-        result[qId] = arr.join("|");
-      } catch {
-        result[qId] = val; // already pipe-separated
+      // For multi-select, always include even if empty
+      let arr: string[] = [];
+      if (val) {
+        try {
+          const parsed = JSON.parse(val);
+          arr = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+        } catch {
+          arr = val.includes("|") ? val.split("|").map((s) => s.trim()).filter(Boolean) : (val ? [val] : []);
+        }
       }
+      
+      // Normalize each answer to use option text
+      arr = arr.map((a) => getNormalizedSingleAnswer(a, normalizedOpts)).filter(Boolean);
+      result[qId] = arr.join("|");
+    } else if (q.type === "TRUE_FALSE") {
+      // Always include true/false answers
+      const normalized = getNormalizedSingleAnswer(val || "", normalizedOpts);
+      result[qId] = normalized || "";
     } else {
-      // Single choice / True-False: send option text as-is
-      result[qId] = String(val);
+      // Single choice: normalize to option text
+      const normalized = getNormalizedSingleAnswer(val || "", normalizedOpts);
+      result[qId] = normalized || "";
     }
   }
+  
+  console.log("Prepared answers for submission:", result);
+  
+  // Debug: Log details about each answer
+  Object.entries(result).forEach(([qId, ans]) => {
+    const ansStr = typeof ans === 'string' ? ans : JSON.stringify(ans);
+    if (ansStr.length > 100) {
+      console.log(`  [${qId}] = "${ansStr.substring(0, 100)}..."`);
+    } else {
+      console.log(`  [${qId}] = "${ansStr}"`);
+    }
+  });
+  
+  // Detailed logging for debugging
+  console.log("[prepareAnswersForSubmit] Detailed breakdown:");
+  Object.entries(result).slice(0, 3).forEach(([qId, answer]) => {
+    console.log("[prepareAnswersForSubmit] Q:", qId, "→", JSON.stringify(answer).substring(0, 100));
+  });
   return result;
 }
 
@@ -179,6 +291,10 @@ function QuestionView({
   isCorrectResult?: boolean;
 }) {
   const showAnswerBlock = !!(checkAnswerEnabled && isChecked);
+  
+  // Normalize options from API
+  const options = normalizeOptions(question.options);
+  
   const selectedMulti: string[] = (() => {
     if (!answer) return [];
     try {
@@ -198,12 +314,12 @@ function QuestionView({
     } else {
       current.push(text);
     }
-    onAnswer(JSON.stringify(current)); // Store array of option texts; submit converts to pipe-separated
+    onAnswer(JSON.stringify(current));
     if (Platform.OS !== "web") Haptics.selectionAsync();
   }
 
   function selectSingle(optText: string) {
-    onAnswer(String(optText)); // Store option text (matches web/backend)
+    onAnswer(String(optText));
     if (Platform.OS !== "web") Haptics.selectionAsync();
   }
 
@@ -214,40 +330,17 @@ function QuestionView({
       ? Colors.primary
       : theme.error;
 
-  // Normalize options - use raw API identifiers; for plain strings use the string as id (backend expects it)
-  const options: Option[] = (question.options || []).map((opt: any, index: number) => {
-    let id: string;
-    let text: string;
-    if (typeof opt === "string" || typeof opt === "number") {
-      const s = String(opt);
-      id = s; // Backend likely expects the actual value for string options
-      text = s;
-    } else {
-      id = String(opt?.id ?? opt?._id ?? opt?.optionId ?? opt?.option_id ?? opt?.value ?? String.fromCharCode(65 + index));
-      text = String(opt?.text ?? opt?.optionText ?? opt?.option_text ?? opt?.label ?? opt?.content ?? opt?.body ?? opt?.title ?? opt?.name ?? opt?.value ?? "");
-    }
-    return { id, text };
-  }).filter((opt) => opt.text !== "" || opt.id !== "");
+  const rawCorrectAnswer = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
+  const hasCorrectAnswer = rawCorrectAnswer != null && (Array.isArray(rawCorrectAnswer) ? rawCorrectAnswer.length > 0 : String(rawCorrectAnswer).length > 0);
 
-  const correctAnswer = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
-  const hasCorrectAnswer = correctAnswer != null && (Array.isArray(correctAnswer) ? correctAnswer.length > 0 : String(correctAnswer).length > 0);
-
-  // Web uses: single/TF = option text; multi-select = pipe-separated "Opt1|Opt2|Opt3"
-  const correctTexts: string[] =
-    question.type === "MULTI_SELECT"
-      ? typeof correctAnswer === "string"
-        ? correctAnswer.split("|").map((s) => s.trim()).filter(Boolean)
-        : Array.isArray(correctAnswer)
-        ? (correctAnswer as string[]).map(String)
-        : []
-      : correctAnswer != null
-      ? [String(correctAnswer).trim()]
-      : [];
+  // Normalize correctAnswer to use option text values
+  const normalizedCorrect = getNormalizedCorrectAnswer(rawCorrectAnswer, options);
+  const correctTexts: string[] = Array.isArray(normalizedCorrect) ? normalizedCorrect : normalizedCorrect ? [normalizedCorrect] : [];
 
   const userSelectedTexts: string[] =
     question.type === "MULTI_SELECT"
       ? selectedMulti
-      : answer ? [String(answer).trim()] : [];
+      : answer ? [getNormalizedSingleAnswer(String(answer).trim(), options)] : [];
 
   const questionTypeLabel =
     question.type === "MULTIPLE_CHOICE"
@@ -361,8 +454,8 @@ function QuestionView({
             {question.type === "MULTI_SELECT"
               ? correctTexts.join(", ")
               : question.type === "FILL_IN_BLANK"
-              ? String(correctAnswer)
-              : correctTexts[0] ?? String(correctAnswer)}
+              ? correctTexts[0] ?? ""
+              : correctTexts[0] ?? correctTexts[0] ?? ""}
           </Text>
         </View>
       )}
@@ -479,30 +572,41 @@ export default function QuizScreen() {
   }
 
   function isAnswerCorrect(question: Question, answer: string): boolean {
-    const correct = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
-    if (correct == null) return false;
+    const rawCorrect = (question as any).correctAnswer ?? (question as any).correct_answer ?? question.correctAnswer;
+    if (rawCorrect == null) return false;
+    
+    const opts = normalizeOptions(question.options);
+    const normalizedCorrect = getNormalizedCorrectAnswer(rawCorrect, opts);
+    
     if (question.type === "MULTI_SELECT") {
-      // Web: correctAnswer is pipe-separated "Opt1|Opt2"; user answer is JSON array or pipe-separated
-      const correctArr = typeof correct === "string"
-        ? correct.split("|").map((s) => s.trim()).filter(Boolean).sort()
-        : Array.isArray(correct)
-        ? correct.map(String).sort()
-        : [];
-      const userArr = (() => {
-        try {
-          const p = JSON.parse(answer || "[]");
-          return Array.isArray(p) ? p.map(String).sort() : answer.split("|").map((s) => s.trim()).filter(Boolean).sort();
-        } catch {
-          return answer.split("|").map((s) => s.trim()).filter(Boolean).sort();
-        }
-      })();
+      // Normalize both correct and user answers to option text arrays
+      const correctArr = (Array.isArray(normalizedCorrect) ? normalizedCorrect : normalizedCorrect ? [normalizedCorrect] : [])
+        .map(String).sort();
+      
+      // Parse user answer as array or pipe-separated
+      let userArr: string[] = [];
+      try {
+        const p = JSON.parse(answer || "[]");
+        userArr = Array.isArray(p) ? p.map(String) : answer.split("|").map((s) => s.trim()).filter(Boolean);
+      } catch {
+        userArr = answer.split("|").map((s) => s.trim()).filter(Boolean);
+      }
+      
+      // Normalize user answer values to option text
+      userArr = userArr.map((a) => getNormalizedSingleAnswer(a, opts)).filter(Boolean).sort();
+      
       return correctArr.length === userArr.length && correctArr.every((c, i) => c === userArr[i]);
     }
+    
     if (question.type === "FILL_IN_BLANK") {
-      return String(answer || "").trim().toLowerCase() === String(correct).trim().toLowerCase();
+      const correct = Array.isArray(normalizedCorrect) ? normalizedCorrect[0] : normalizedCorrect;
+      return String(answer || "").trim().toLowerCase() === String(correct || "").trim().toLowerCase();
     }
-    // Single choice / True-False: compare option text
-    return String(answer || "").trim() === String(correct).trim();
+    
+    // Single choice / True-False: normalize both sides and compare
+    const correct = Array.isArray(normalizedCorrect) ? normalizedCorrect[0] : normalizedCorrect;
+    const normalized = getNormalizedSingleAnswer(answer, opts);
+    return String(normalized).trim() === String(correct || "").trim();
   }
 
   function handleCheckAnswer() {
@@ -530,6 +634,13 @@ export default function QuizScreen() {
 
     try {
       const prepared = prepareAnswersForSubmit(qd.quiz.questions, ans);
+      
+      console.log("Auto-submitting quiz (time expired):", {
+        quizId: qd.quiz.id,
+        attemptId: qd.attemptId,
+        answerCount: Object.keys(prepared).length,
+      });
+      
       const res = await api.submitQuiz(qd.quiz.id, qd.attemptId, prepared);
       if (res.success && res.data) {
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -544,8 +655,11 @@ export default function QuizScreen() {
             showAnswers: qd.quiz.showAnswers ? "1" : "0",
           },
         });
+      } else {
+        throw new Error(res.message || "Failed to auto-submit quiz");
       }
     } catch (err: any) {
+      console.error("Auto-submit error:", err);
       showToast(err.message || "Failed to submit quiz", "error");
       setSubmitting(false);
     }
@@ -587,9 +701,31 @@ export default function QuizScreen() {
     setSubmitting(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
+    let prepared: Record<string, string> = {};
     try {
-      const prepared = prepareAnswersForSubmit(quizData.quiz.questions, answers);
+      prepared = prepareAnswersForSubmit(quizData.quiz.questions, answers);
+      
+      // Validate before submission
+      if (!prepared || Object.keys(prepared).length === 0) {
+        throw new Error("No answers to submit. Please answer at least one question.");
+      }
+      
+      // Ensure attemptId is valid
+      if (!quizData.attemptId || !quizData.quiz.id) {
+        throw new Error("Invalid quiz or attempt data. Please reload the quiz.");
+      }
+      
+      const answered = Object.values(prepared).filter(v => v && v.length > 0).length;
+      const empty = Object.keys(prepared).length - answered;
+      console.log("Submitting:", { total: Object.keys(prepared).length, answered, empty });
+      
+      const answeredIds = Object.entries(prepared).filter(([_, v]) => v && v.length > 0).map(([id]) => id);
+      const emptyIds = Object.entries(prepared).filter(([_, v]) => !v || v.length === 0).map(([id]) => id);
+      console.log("Questions with answers:", answeredIds);
+      console.log("Questions without answers:", emptyIds);
+      
       const res = await api.submitQuiz(quizData.quiz.id, quizData.attemptId, prepared);
+      
       if (res.success && res.data) {
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Quiz submitted!", "success");
@@ -603,8 +739,26 @@ export default function QuizScreen() {
             showAnswers: quizData.quiz.showAnswers ? "1" : "0",
           },
         });
+      } else {
+        console.error("Response not successful:", res);
+        throw new Error(res.message || "Unknown error during submission");
       }
     } catch (err: any) {
+      console.error("================");
+      console.error("❌ SUBMISSION FAILED");
+      console.error("================");
+      console.error("Error message:", err.message);
+      console.error("Full error:", err);
+      console.error("Error stack:", err.stack);
+      
+      // Show prepared payload breakdown
+      const answered = Object.entries(prepared).filter(([_, v]) => v && v.length > 0);
+      const unanswered = Object.entries(prepared).filter(([_, v]) => !v || v.length === 0);
+      console.error("Payload Summary:");
+      console.error("  Total questions:", quizData?.quiz.questions.length);
+      console.error("  With answers:", answered.length, "IDs:", answered.map(([id]) => id));
+      console.error("  Empty:", unanswered.length, "IDs:", unanswered.map(([id]) => id).slice(0, 3));
+      
       showToast(err.message || "Failed to submit quiz", "error");
       setSubmitting(false);
     }
