@@ -53,6 +53,10 @@ export interface QuizListItem {
   inProgressAttemptId: string | null; // ID of in-progress attempt
 }
 
+
+
+
+
 /**
  * Question Types
  */
@@ -81,7 +85,7 @@ export interface Question {
   order: number;
   displayOrder?: number;        // Display order when randomOrder is enabled
   points: number;
-  correctAnswer?: string | string[]; // Only included if checkAnswerEnabled is true
+  correctAnswer: string | string[]; // Always included (parsed format)
 }
 
 /**
@@ -304,34 +308,7 @@ export const api = {
     return apiRequest<QuizData>(`/quiz/${quizId}`);
   },
 
-  /**
-   * Save quiz answers without submitting
-   * POST /quiz/:id/save
-   *
-   * Used for auto-save functionality in app/quiz/[id].tsx
-   * Saves progress without finalizing the attempt
-   *
-   * @param quizId - Quiz ID
-   * @param attemptId - Current attempt ID
-   * @param answers - Object mapping question ID to user answer
-   * @returns Save statistics
-   */
-  async saveQuizAnswers(
-    quizId: string,
-    attemptId: string,
-    answers: Record<string, string>
-  ) {
-    return apiRequest<{
-      attemptId: string;
-      saved: number;
-      updated: number;
-      total: number;
-      savedAt: string;
-    }>(`/quiz/${quizId}/save`, {
-      method: "POST",
-      body: JSON.stringify({ attemptId, answers }),
-    });
-  },
+
 
   /**
    * Submit quiz for grading and calculate final score
@@ -358,33 +335,7 @@ export const api = {
     });
   },
 
-  /**
-   * Get detailed quiz results for a specific attempt
-   * GET /quiz/:id/result?attemptId={attemptId}
-   *
-   * Returns:
-   * - Quiz configuration
-   * - Attempt summary (score, timeTaken, isAutoSubmitted)
-   * - Detailed question results (if showAnswers is true)
-   *
-   * @param quizId - Quiz ID
-   * @param attemptId - Attempt ID to get results for
-   * @returns Detailed quiz results
-   */
-  async getQuizResult(quizId: string, attemptId: string) {
-    return apiRequest<any>(`/quiz/${quizId}/result?attemptId=${attemptId}`);
-  },
 
-  /**
-   * Get complete attempt history for a specific quiz
-   * GET /quiz/:id/history
-   *
-   * @param quizId - Quiz ID
-   * @returns All attempts for the quiz
-   */
-  async getQuizHistory(quizId: string) {
-    return apiRequest<any>(`/quiz/${quizId}/history`);
-  },
 
   // ==================== PROFILE MANAGEMENT ====================
 
