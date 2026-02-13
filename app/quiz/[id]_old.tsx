@@ -35,7 +35,7 @@ interface Question {
   difficulty: string;
   order: number;
   points: number;
-  correctAnswer: string | string[];
+  correctAnswer: string | string[]; // Always included now
 }
 
 interface QuizData {
@@ -133,6 +133,9 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+/**
+ * Normalize options from API to a consistent format
+ */
 function normalizeOptions(options: any[]): Option[] {
   if (!options || !Array.isArray(options)) return [];
 
@@ -165,6 +168,9 @@ function normalizeOptions(options: any[]): Option[] {
   }).filter((opt) => opt.text && opt.text.length > 0);
 }
 
+/**
+ * Get the text(s) of the correct answer(s) from options
+ */
 function getCorrectAnswerTexts(correctAnswer: any, options: Option[]): string[] {
   if (correctAnswer == null) return [];
 
@@ -178,15 +184,20 @@ function getCorrectAnswerTexts(correctAnswer: any, options: Option[]): string[] 
   return single ? [single] : [];
 }
 
+/**
+ * Get the text of a single correct answer
+ */
 function getSingleCorrectAnswerText(answer: any, options: Option[]): string {
   if (answer == null) return "";
 
   const answerStr = String(answer).trim().toLowerCase();
 
+  // Handle true/false answers
   if (answerStr === "true" || answerStr === "false") {
     return answerStr === "true" ? "True" : "False";
   }
 
+  // If answer is a number, try to use it as an index
   const numAnswer = Number(answerStr);
   if (!isNaN(numAnswer) && options.length > 0) {
     if (numAnswer > 0 && numAnswer <= options.length) {
@@ -197,11 +208,13 @@ function getSingleCorrectAnswerText(answer: any, options: Option[]): string {
     }
   }
 
+  // Try to find by ID
   const optionById = options.find((opt) => opt.id.toLowerCase() === answerStr);
   if (optionById) {
     return optionById.text;
   }
 
+  // Try to find by text
   const optionByText = options.find(
     (opt) => opt.text.toLowerCase() === answerStr
   );
@@ -209,18 +222,12 @@ function getSingleCorrectAnswerText(answer: any, options: Option[]): string {
     return optionByText.text;
   }
 
-  if (answerStr.length === 1) {
-    const optionByFirstLetter = options.find(
-      (opt) => opt.id.toLowerCase().startsWith(answerStr)
-    );
-    if (optionByFirstLetter) {
-      return optionByFirstLetter.text;
-    }
-  }
-
   return answer;
 }
 
+/**
+ * Check if the user's answer is correct
+ */
 function isAnswerCorrect(
   question: Question,
   userAnswer: string
@@ -232,6 +239,7 @@ function isAnswerCorrect(
 
   const options = normalizeOptions(question.options);
 
+  // Handle MULTI_SELECT questions
   if (question.type === "MULTI_SELECT") {
     let userSelected: string[] = [];
     try {
@@ -254,6 +262,7 @@ function isAnswerCorrect(
       correctArray = [String(correctAnswer)];
     }
 
+    // Compare by IDs
     const userIds = userSelected
       .map((sel) => {
         const opt = options.find((o) => o.text === sel);
@@ -268,6 +277,7 @@ function isAnswerCorrect(
 
     if (idsMatch) return true;
 
+    // Fallback: Compare by texts
     const sortedUserTexts = [...userSelected].sort();
     const sortedCorrectTexts = correctArray
       .map((corr) => {
@@ -280,6 +290,7 @@ function isAnswerCorrect(
     return JSON.stringify(sortedUserTexts) === JSON.stringify(sortedCorrectTexts);
   }
 
+  // Handle FILL_IN_BLANK questions
   if (question.type === "FILL_IN_BLANK") {
     let correctStr: string;
     if (typeof correctAnswer === "string") {
@@ -300,6 +311,7 @@ function isAnswerCorrect(
     return userStr === correctLower;
   }
 
+  // Handle TRUE_FALSE questions
   if (question.type === "TRUE_FALSE") {
     let correctStr: string;
     if (typeof correctAnswer === "string") {
@@ -324,6 +336,7 @@ function isAnswerCorrect(
     return normalizedUser === normalizedCorrect;
   }
 
+  // Handle MULTIPLE_CHOICE questions
   let correctIdOrText: string;
   if (typeof correctAnswer === "string") {
     try {
@@ -338,16 +351,14 @@ function isAnswerCorrect(
     correctIdOrText = String(correctAnswer);
   }
 
-  const userOptionById = options.find(
-    (opt) => opt.id === userAnswer
-  );
+  // Try matching by ID
+  const userOptionById = options.find((opt) => opt.id === userAnswer);
   if (userOptionById) {
     return userOptionById.id === correctIdOrText;
   }
 
-  const userOptionByText = options.find(
-    (opt) => opt.text === userAnswer
-  );
+  // Fallback: Try matching by text
+  const userOptionByText = options.find((opt) => opt.text === userAnswer);
   if (userOptionByText) {
     return userOptionByText.text.toLowerCase() === correctIdOrText.toLowerCase();
   }
@@ -355,6 +366,9 @@ function isAnswerCorrect(
   return userAnswer.toLowerCase().trim() === correctIdOrText.toLowerCase().trim();
 }
 
+/**
+ * Calculate quiz results locally
+ */
 function calculateResults(quizData: QuizData, answers: Record<string, string>): QuizResultData {
   const questions = quizData.quiz.questions;
   const negativeMarking = quizData.quiz.negativeMarking || false;
@@ -431,26 +445,26 @@ function OptionButton({
   const bgColor = correct
     ? theme.success + "20"
     : wrong
-      ? theme.error + "20"
-      : selected
-        ? Colors.primary + "15"
-        : theme.inputBg;
+    ? theme.error + "20"
+    : selected
+    ? Colors.primary + "15"
+    : theme.inputBg;
 
   const borderColor = correct
     ? theme.success
     : wrong
-      ? theme.error
-      : selected
-        ? Colors.primary
-        : theme.inputBorder;
+    ? theme.error
+    : selected
+    ? Colors.primary
+    : theme.inputBorder;
 
   const textColor = correct
     ? theme.success
     : wrong
-      ? theme.error
-      : selected
-        ? Colors.primary
-        : theme.text;
+    ? theme.error
+    : selected
+    ? Colors.primary
+    : theme.text;
 
   return (
     <Pressable
@@ -473,14 +487,14 @@ function OptionButton({
               correct || wrong
                 ? borderColor
                 : selected
-                  ? Colors.primary
-                  : theme.textTertiary,
+                ? Colors.primary
+                : theme.textTertiary,
             backgroundColor:
               correct || wrong
                 ? borderColor
                 : selected
-                  ? Colors.primary
-                  : "transparent",
+                ? Colors.primary
+                : "transparent",
           },
         ]}
       >
@@ -555,8 +569,8 @@ function QuestionView({
     question.difficulty?.toUpperCase() === "EASY"
       ? theme.success
       : question.difficulty?.toUpperCase() === "MEDIUM"
-        ? Colors.primary
-        : theme.error;
+      ? Colors.primary
+      : theme.error;
 
   const questionTypeLabel = {
     MULTIPLE_CHOICE: "Multiple Choice",
@@ -607,8 +621,8 @@ function QuestionView({
                 showAnswerBlock && isCorrect
                   ? theme.success
                   : showAnswerBlock && !isCorrect && answer
-                    ? theme.error
-                    : theme.inputBorder,
+                  ? theme.error
+                  : theme.inputBorder,
             },
           ]}
         >
@@ -882,7 +896,6 @@ export default function QuizScreen() {
     }
 
     setCheckedQuestions((prev) => new Set(prev).add(qId));
-
   }
 
   async function handleSubmit(auto = false) {
@@ -897,7 +910,8 @@ export default function QuizScreen() {
       if (unanswered > 0) {
         Alert.alert(
           "Submit Quiz?",
-          `You have ${unanswered} unanswered question${unanswered > 1 ? "s" : ""
+          `You have ${unanswered} unanswered question${
+            unanswered > 1 ? "s" : ""
           }. Are you sure?`,
           [
             { text: "Cancel", style: "cancel" },
@@ -926,20 +940,60 @@ export default function QuizScreen() {
 
     setSubmitting(true);
 
+    // Clear timer
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      const prepared = prepareAnswersForSubmit(quizData, answers);
-
-      // Submit to server
-      const res = await api.submitQuiz(
-        quizData.quiz.id,
-        quizData.attemptId,
-        prepared
-      );
-
       // Calculate results locally
       const results = calculateResults(quizData, answers);
+      
+      // Still submit to server to record the attempt
+      const preparedAnswers: Record<string, string> = {};
+      for (const q of quizData.quiz.questions) {
+        const qId = q.id;
+        const answer = answers[qId] || "";
+        if (!answer) continue;
+
+        const options = normalizeOptions(q.options);
+        if (q.type === "FILL_IN_BLANK") {
+          preparedAnswers[qId] = answer.trim();
+        } else if (q.type === "MULTI_SELECT") {
+          let selected: string[] = [];
+          try {
+            selected = JSON.parse(answer);
+          } catch {
+            selected = answer.split("|").map((s) => s.trim()).filter(Boolean);
+          }
+          const selectedIds = selected
+            .map((sel) => {
+              const opt = options.find((o) => o.text === sel || o.id === sel);
+              return opt?.id || sel;
+            })
+            .filter(Boolean);
+          preparedAnswers[qId] = JSON.stringify(selectedIds);
+        } else if (q.type === "TRUE_FALSE") {
+          const normalized = answer.trim().toLowerCase();
+          const trueOption = options.find((o) => o.text.toLowerCase() === "true");
+          const falseOption = options.find((o) => o.text.toLowerCase() === "false");
+
+          if (trueOption && falseOption) {
+            preparedAnswers[qId] = normalized === "true" ? "true" : "false";
+          } else {
+            const selectedOpt = options.find((o) => o.text === answer || o.id === answer);
+            preparedAnswers[qId] = selectedOpt?.id || answer;
+          }
+        } else {
+          const opt = options.find((o) => o.text === answer || o.id === answer);
+          preparedAnswers[qId] = opt?.id || answer;
+        }
+      }
+
+      // Submit to server (but use our calculated results)
+      await api.submitQuiz(
+        quizData.quiz.id,
+        quizData.attemptId,
+        preparedAnswers
+      );
 
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -947,6 +1001,7 @@ export default function QuizScreen() {
 
       showToast("Quiz submitted successfully!", "success");
 
+      // Pass detailed results to result page
       router.replace({
         pathname: "/result",
         params: {
@@ -964,54 +1019,6 @@ export default function QuizScreen() {
       showToast(error.message || "Failed to submit quiz", "error");
       setSubmitting(false);
     }
-  }
-
-  function prepareAnswersForSubmit(quizData: QuizData, answers: Record<string, string>): Record<string, string> {
-    const result: Record<string, string> = {};
-
-    for (const q of quizData.quiz.questions) {
-      const qId = q.id;
-      const answer = answers[qId] || "";
-      if (!answer) continue;
-
-      const options = normalizeOptions(q.options);
-
-      if (q.type === "FILL_IN_BLANK") {
-        result[qId] = answer.trim();
-      } else if (q.type === "MULTI_SELECT") {
-        let selected: string[] = [];
-        try {
-          selected = JSON.parse(answer);
-        } catch {
-          selected = answer.split("|").map((s) => s.trim()).filter(Boolean);
-        }
-
-        const selectedIds = selected
-          .map((sel) => {
-            const opt = options.find((o) => o.text === sel || o.id === sel);
-            return opt?.id || sel;
-          })
-          .filter(Boolean);
-
-        result[qId] = JSON.stringify(selectedIds);
-      } else if (q.type === "TRUE_FALSE") {
-        const normalized = answer.trim().toLowerCase();
-        const trueOption = options.find((o) => o.text.toLowerCase() === "true");
-        const falseOption = options.find((o) => o.text.toLowerCase() === "false");
-
-        if (trueOption && falseOption) {
-          result[qId] = normalized === "true" ? "true" : "false";
-        } else {
-          const selectedOpt = options.find((o) => o.text === answer || o.id === answer);
-          result[qId] = selectedOpt?.id || answer;
-        }
-      } else {
-        const opt = options.find((o) => o.text === answer || o.id === answer);
-        result[qId] = opt?.id || answer;
-      }
-    }
-
-    return result;
   }
 
   if (loading) {
@@ -1032,22 +1039,24 @@ export default function QuizScreen() {
   const hasAnswered =
     currentQuestion.type === "MULTI_SELECT"
       ? (() => {
-        try {
-          const parsed = JSON.parse(currentAnswer);
-          return Array.isArray(parsed) && parsed.length > 0;
-        } catch {
-          return false;
-        }
-      })()
+          try {
+            const parsed = JSON.parse(currentAnswer);
+            return Array.isArray(parsed) && parsed.length > 0;
+          } catch {
+            return false;
+          }
+        })()
       : currentAnswer.length > 0;
 
+  const answeredCount = Object.values(answers).filter(
+    (a) => a && a.length > 0
+  ).length;
   const isTimeLow = timeLeft > 0 && timeLeft <= 60;
   const isCheckEnabled = quizData.quiz.checkAnswerEnabled;
   const isQuestionChecked = checkedQuestions.has(currentQuestion.id);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Top Bar */}
       <View
         style={[
           styles.topBar,
@@ -1097,7 +1106,6 @@ export default function QuizScreen() {
         )}
       </View>
 
-      {/* Progress Bar */}
       <View style={[styles.progressBar, { backgroundColor: theme.inputBg }]}>
         <View
           style={[
@@ -1110,10 +1118,6 @@ export default function QuizScreen() {
         />
       </View>
 
-      {/* Navigation Buttons (Above) */}
-
-
-      {/* Question - Scrollable area */}
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
@@ -1134,7 +1138,6 @@ export default function QuizScreen() {
         />
       </ScrollView>
 
-      {/* Bottom Bar - Submit Button */}
       <View
         style={[
           styles.bottomBar,
@@ -1145,143 +1148,74 @@ export default function QuizScreen() {
           },
         ]}
       >
-        {currentIndex === questions.length - 1 ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.navBtn,
-              styles.submitBtn,
-              {
-                backgroundColor: Colors.primary,
-                opacity: submitting ? 0.6 : pressed ? 0.9 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }],
-              },
-            ]}
-            onPress={() => handleSubmit()}
-            disabled={submitting}
-          >
-            <Ionicons name="send" size={18} color="#fff" />
-            <Text style={styles.submitBtnText}>
-              {submitting ? "Submitting..." : "Submit Quiz"}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={{ flex: 1 }} />
-        )}
-      </View>
-      <View style={[styles.topNavBar, { backgroundColor: theme.surface, borderTopColor: theme.cardBorder }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.navBtn,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: theme.inputBorder,
-              opacity: currentIndex === 0 ? 0.5 : pressed ? 0.8 : 1,
-            },
-          ]}
-          onPress={() => setCurrentIndex((prev) => prev - 1)}
-          disabled={currentIndex === 0 || submitting}
-        >
-          <Ionicons name="chevron-back" size={18} color={theme.text} />
-        </Pressable>
-
-        {/* Question Indicators Scrollable */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.questionIndicators}
-          style={styles.indicatorScroll}
-        >
-          {questions.map((q, index) => {
-            const isCurrent = index === currentIndex;
-            const isAnswered = answers[q.id] && answers[q.id].length > 0;
-            const isCorrect = isAnswered ? isAnswerCorrect(q, answers[q.id]) : false;
-
-            return (
-              <Pressable
-                key={q.id}
-                style={({ pressed }) => [
-                  styles.indicatorBubble,
-                  {
-                    backgroundColor: isCurrent
-                      ? Colors.primary
-                      : isAnswered
-                        ? isCorrect
-                          ? theme.success
-                          : theme.error
-                        : theme.inputBg,
-                    borderColor: isCurrent
-                      ? Colors.primary
-                      : isAnswered
-                        ? isCorrect
-                          ? theme.success
-                          : theme.error
-                        : theme.inputBorder,
-                    opacity: pressed ? 0.8 : 1,
-                  },
-                ]}
-                onPress={() => {
-                  if (!submitting) {
-                    setCurrentIndex(index);
-                    if (scrollRef.current) {
-                      scrollRef.current.scrollTo({ y: 0, animated: true });
-                    }
-                  }
-                }}
-                disabled={submitting}
-              >
-                <Text
-                  style={[
-                    styles.indicatorText,
-                    {
-                      color: isCurrent
-                        ? "#fff"
-                        : isAnswered
-                          ? isCorrect
-                            ? theme.success
-                            : theme.error
-                          : theme.textTertiary,
-                    },
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {isCheckEnabled && !isQuestionChecked ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.navBtn,
-              styles.checkBtn,
-              {
-                backgroundColor: Colors.primary,
-                opacity: hasAnswered ? (pressed ? 0.9 : 1) : 0.5,
-              },
-            ]}
-            onPress={handleCheckAnswer}
-            disabled={!hasAnswered || submitting}
-          >
-            <Ionicons name="checkmark-circle" size={18} color="#fff" />
-          </Pressable>
-        ) : currentIndex === questions.length - 1 ? (
-          <View style={{ width: 48 }} />
-        ) : (
+        <View style={styles.navRow}>
           <Pressable
             style={({ pressed }) => [
               styles.navBtn,
               {
-                backgroundColor: Colors.primary,
-                opacity: pressed ? 0.9 : 1,
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                opacity: currentIndex === 0 ? 0.5 : pressed ? 0.8 : 1,
               },
             ]}
-            onPress={() => setCurrentIndex((prev) => prev + 1)}
-            disabled={submitting}
+            onPress={() => setCurrentIndex((prev) => prev - 1)}
+            disabled={currentIndex === 0}
           >
-            <Ionicons name="chevron-forward" size={18} color="#fff" />
+            <Ionicons name="chevron-back" size={18} color={theme.text} />
           </Pressable>
-        )}
+
+          <Text style={[styles.counterText, { color: theme.textSecondary }]}>
+            {answeredCount}/{questions.length} answered
+          </Text>
+
+          {isCheckEnabled && !isQuestionChecked ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                styles.checkBtn,
+                {
+                  backgroundColor: Colors.primary,
+                  opacity: hasAnswered ? (pressed ? 0.9 : 1) : 0.5,
+                },
+              ]}
+              onPress={handleCheckAnswer}
+              disabled={!hasAnswered || submitting}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            </Pressable>
+          ) : currentIndex === questions.length - 1 ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                styles.submitBtn,
+                {
+                  backgroundColor: Colors.primary,
+                  opacity: submitting ? 0.6 : pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+              onPress={() => handleSubmit(false)}
+              disabled={submitting}
+            >
+              <Ionicons name="send" size={18} color="#fff" />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                {
+                  backgroundColor: Colors.primary,
+                  opacity: pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+              onPress={() => setCurrentIndex((prev) => prev + 1)}
+              disabled={submitting}
+            >
+              <Ionicons name="chevron-forward" size={18} color="#fff" />
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -1331,13 +1265,6 @@ const styles = StyleSheet.create({
   progressFill: {
     height: "100%",
     borderRadius: 1.5,
-  },
-  topNavBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
   },
   scrollContent: {
     padding: 16,
@@ -1475,6 +1402,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   navBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1494,28 +1426,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     flex: 1,
     textAlign: "center",
-  },
-  indicatorScroll: {
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  questionIndicators: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 4,
-  },
-  indicatorBubble: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 2,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  indicatorText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
   },
   checkBtn: {
     shadowColor: Colors.primary,
